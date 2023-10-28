@@ -1,0 +1,57 @@
+sudo: required
+
+language: go
+
+dist: focal
+
+services:
+  - docker
+
+go:
+  - 1.21.x
+
+arch:
+#  - amd64
+  - arm64  # 好像不购买商业版不能用
+
+
+os:
+  - linux
+
+cache:
+  directories:
+    - /home/travis/.cache/go-build
+    - /home/travis/go
+
+jobs:
+  include:
+    - stage: test
+    - stage: Push Docker Manifest
+      env:
+        - DOCKER_CLI_EXPERIMENTAL=enabled
+      script:
+        - if [ "$TRAVIS_OS_NAME" == "linux" -a ! -z "$TRAVIS_TAG" ]; then
+          echo "Executing release-manifest on tag build $TRAVIS_TAG";
+          docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
+          make release-manifest;
+          fi
+
+before_install:
+  - mkdir -vp ~/.docker/cli-plugins/
+  - curl --silent -L "https://github.com/docker/buildx/releases/download/v0.10.4/buildx-v0.10.4.linux-amd64" > ~/.docker/cli-plugins/docker-buildx
+  - chmod a+x ~/.docker/cli-plugins/docker-buildx
+install:
+  - make setup
+script:
+  - make fmt
+after_success:
+  - if [ "$TRAVIS_BUILD_STAGE_NAME" == "test" -a "$TRAVIS_OS_NAME" == "linux" -a ! -z "$TRAVIS_TAG" ]; then
+    echo "Executing release on tag build $TRAVIS_TAG";
+    docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
+    for arch in amd64 arm64; do
+    make ARCH=linux CPU_ARCH=$arch release;
+    done
+    else
+    echo "Not executing release on non-tag build $TRAVIS_TAG";
+    fi
+
